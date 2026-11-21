@@ -17,6 +17,7 @@ library
   hs-source-dirs:     src
   exposed-modules:
     Godot.Host
+    Godot.Host.Live
     Godot.LibGodot
 
   -- libgodot.h and the interface header it includes, for the C stubs that
@@ -24,10 +25,12 @@ library
   include-dirs:       include
   extra-libraries:    godot
   build-depends:
+    , async
     , base
     , gdextension-interface
     , godot-api
     , hs-bindgen-runtime
+    , stm
 
   default-extensions:
     DerivingStrategies

@@ -70,6 +70,10 @@ main = withGodot ["my-program", "--path", "project"] $ \godot ->
    in loop
 ```
 
+For live coding, `Godot.Host.Live` runs the engine on its own thread from a
+GHCi session and lets the scene and the per-frame code be replaced after a
+`:reload`, with the window staying open.
+
 Hosting needs Godot built as a shared library, which nixpkgs does not package.
 Entering the `hosted` shell builds it once: a full engine compile, 15 to 35
 minutes on a 12-core machine.

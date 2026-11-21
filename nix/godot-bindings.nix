@@ -8,6 +8,12 @@
 # `classes` limits the engine API to those classes and their ancestors; the
 # default, an empty list, generates every class.
 { pkgs, hs-bindgen-cli, classes ? [ ] }:
+let
+  # The godot-host package calls these itself, so they are generated
+  # whatever the caller lists. An empty list already means every class.
+  hostClasses = [ "GodotInstance" "Engine" "SceneTree" "Window" "Node3D" ];
+  selectedClasses = if classes == [ ] then [ ] else pkgs.lib.unique (classes ++ hostClasses);
+in
 rec {
   # The GDExtension C header and JSON API descriptions, dumped from the same
   # Godot binary the devShell provides, so they always match the engine.
@@ -66,7 +72,7 @@ rec {
     cp -r ${../api/src} $out/src
     cp -r ${../api/cbits} $out/cbits
     chmod -R u+w $out/src
-    ./genapi ${godot-api-json}/extension_api.json $out/src ${pkgs.lib.escapeShellArgs classes}
+    ./genapi ${godot-api-json}/extension_api.json $out/src ${pkgs.lib.escapeShellArgs selectedClasses}
     modules=$(sed 's/^/    /' $out/src/modules.txt)
     rm $out/src/modules.txt
     substitute ${./godot-api.cabal.in} $out/godot-api.cabal --subst-var-by MODULES "$modules"
