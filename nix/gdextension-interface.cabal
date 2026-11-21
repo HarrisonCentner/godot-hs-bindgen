@@ -1,0 +1,26 @@
+cabal-version: 3.0
+name:          gdextension-interface
+version:       0.1.0.0
+synopsis:      Haskell bindings for Godot's GDExtension C interface
+description:
+  Generated from the gdextension_interface.h and gdextension_interface.json
+  that Godot dumps: the C interface by hs-bindgen, and typed lookups for its
+  functions on top.
+  The source tree for this package is assembled by the gdextension-bindings
+  derivation in nix/godot-bindings.nix; only this file is checked in.
+
+license:       MIT
+category:      Game
+build-type:    Simple
+
+library
+  hs-source-dirs:   src
+  exposed-modules:
+    Godot.GDExtension.Functions
+    Godot.GDExtension.Interface
+
+  build-depends:
+    , base
+    , hs-bindgen-runtime
+
+  default-language: GHC2021

@@ -1,0 +1,42 @@
+cabal-version: 3.0
+name:          godot-api
+version:       0.1.0.0
+synopsis:      Haskell bindings for Godot's engine classes
+description:
+  Generated from the extension_api.json that Godot dumps, on top of the
+  gdextension-interface package. The source tree for this package is
+  assembled by the godot-api-src derivation in nix/godot-bindings.nix from
+  the generator's output and the hand-written modules in api/src.
+
+license:       MIT
+category:      Game
+build-type:    Simple
+
+library
+  hs-source-dirs:     src
+  c-sources:          cbits/release_queue.c
+  exposed-modules:
+    Godot.Api
+    Godot.Api.Builtins
+    Godot.Api.Classes
+    Godot.Api.Enums
+    Godot.Api.Runtime
+    Godot.Api.Strings
+    Godot.Api.Variant
+@MODULES@
+
+  build-depends:
+    , array
+    , base
+    , gdextension-interface
+    , hs-bindgen-runtime
+
+  default-extensions:
+    DerivingStrategies
+    LambdaCase
+    NamedFieldPuns
+    RecordWildCards
+    StrictData
+    TypeApplications
+
+  default-language:   GHC2021

@@ -1,0 +1,50 @@
+cabal-version: 3.0
+name:          example-extension
+version:       0.1.0.0
+synopsis:      Godot hosts Haskell: a Godot extension written in Haskell
+license:       MIT
+category:      Game
+build-type:    Simple
+
+common shared
+  ghc-options:
+    -Wall -Wincomplete-record-updates -Wincomplete-uni-patterns
+    -Wmissing-deriving-strategies -threaded -O2
+
+  default-extensions:
+    DerivingStrategies
+    ImportQualifiedPost
+    LambdaCase
+    NamedFieldPuns
+    RecordWildCards
+    StrictData
+
+  default-language:   GHC2021
+
+-- The shared library Godot loads (godot/hs_example.gdextension).
+foreign-library hs_example
+  import:         shared
+  type:           native-shared
+  c-sources:      cbits/rts_shim.c
+  hs-source-dirs: ext
+  other-modules:  Example.Entry
+  build-depends:
+    , base
+    , gdextension-interface
+    , godot-api
+    , hs-bindgen-runtime
+
+-- The test suite, also an extension: hedgehog properties that run inside
+-- Godot (godot-tests/hs_tests.gdextension).
+foreign-library hs_tests
+  import:         shared
+  type:           native-shared
+  c-sources:      cbits/rts_shim.c
+  hs-source-dirs: test
+  other-modules:  Tests.Entry
+  build-depends:
+    , base
+    , gdextension-interface
+    , godot-api
+    , hedgehog
+    , hs-bindgen-runtime

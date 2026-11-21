@@ -1,0 +1,46 @@
+name: Hosted example
+
+# Builds Godot as a shared library and the program that hosts it. That is a
+# full engine compile, far longer than the rest of CI, so it only runs when
+# asked for or when the library's build definition changes.
+on:
+  workflow_dispatch:
+  push:
+    branches: [master, main]
+    paths:
+      - nix/libgodot.nix
+      - flake.lock
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hosted-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  hosted:
+    name: Build libgodot and the hosted example
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+            /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost \
+            /usr/share/swift
+          sudo docker image prune --all --force > /dev/null
+      - uses: actions/checkout@v7
+      - uses: DeterminateSystems/nix-installer-action@v23
+      - name: Build libgodot
+        run: nix build .#libgodot -L
+      - name: Build the hosted example
+        run: nix build .#example-hosted -L
+      # No display on the runner: run without a window for a fixed number of
+      # frames and check that the frame loop ran.
+      - name: Run it headless
+        run: |
+          result/bin/hosted-example --frames 120 --path examples/hosted/godot --headless 2>&1 | tee log
+          grep -q "root has 4 children" log
+          # Godot reports objects and resources still alive when it exits.
+          ! grep -i "leaked" log

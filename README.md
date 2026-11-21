@@ -1,0 +1,122 @@
+# godot-hs-bindgen
+
+Haskell bindings for Godot 4, generated with
+[hs-bindgen](https://github.com/well-typed/hs-bindgen) and built with Nix.
+Godot can load Haskell as an extension, or Haskell can run Godot as a library.
+
+```haskell
+import Godot.Api
+import Godot.Api.Class.Node qualified as Node
+import Godot.Api.Class.Node3D qualified as Node3D
+
+node <- Node3D.construct
+Node3D.setPosition node (Vector3 1 2 3)
+Vector3 {x} <- Node3D.getPosition node
+Node.setName node =<< toStringName "from_haskell"   -- a Node method on a Node3D
+parent <- Node3D.getParentNode3d node               -- Maybe Node3D
+```
+
+## Packages
+
+All three are generated from the Godot in nixpkgs, so they always match it.
+
+| Package | What it is |
+|---|---|
+| `gdextension-interface` | Godot's C interface, by hs-bindgen, plus a typed record of its functions |
+| `godot-api` | The engine's classes, value types, enums and variants |
+| `godot-host` | Runs Godot inside a Haskell program |
+
+## What the engine API gives you
+
+- A newtype per class; methods accept any subclass.
+- `Maybe` for results that can be null.
+- Value types (`Vector3`, `Color`, `Transform3D`, ...) as strict records.
+- Strings, arrays and other engine-owned values, freed when garbage collected.
+- Enums as newtypes with a pattern synonym per value.
+- Variants with a closed witness of their type: `toVariant`, a checked
+  `fromVariant`, and `viewVariant` to pattern match on.
+- Handles that are safe to keep: resources are reference-counted, and using a
+  freed node throws `ObjectFreed`.
+- Every method as a safe foreign call and as a faster `_unsafe` one, for calls
+  that cannot re-enter Haskell.
+
+## Examples
+
+**Godot hosts Haskell** (`examples/extension`): Godot loads a Haskell shared
+library as an extension.
+
+```sh
+nix develop
+example-run --headless --quit   # build it, load it in Godot, exit
+example-run                     # same, with a window
+test-run                        # the hedgehog suite, inside Godot
+```
+
+**Haskell hosts Godot** (`examples/hosted`): a Haskell program drives the
+frame loop and turns a cube before every frame.
+
+```sh
+nix develop .#hosted
+hosted-run                          # a window; close it to exit
+hosted-run --frames 120 --headless
+```
+
+```haskell
+main = withGodot ["my-program", "--path", "project"] $ \godot ->
+  let loop = do
+        -- per-frame Haskell code
+        quit <- GodotInstance.iteration godot
+        unless quit loop
+   in loop
+```
+
+Hosting needs Godot built as a shared library, which nixpkgs does not package.
+Entering the `hosted` shell builds it once: a full engine compile, 15 to 35
+minutes on a 12-core machine.
+
+Only x86_64-linux has been built and run.
+
+## Using it from another flake
+
+`lib.mkBindings` builds the packages against your own nixpkgs. Pass `classes`
+to generate methods for those classes and their ancestors only; the default,
+every class, is about a thousand modules. With
+[haskell-flake](https://github.com/srid/haskell-flake):
+
+```nix
+perSystem = { pkgs, ... }:
+  let
+    bindings = inputs.godot-hs-bindgen.lib.mkBindings {
+      inherit pkgs;
+      classes = [ "Node3D" "MeshInstance3D" ];
+    };
+  in
+  {
+    haskellProjects.default = {
+      packages = {
+        gdextension-interface.source = bindings.gdextension-bindings.outPath;
+        godot-api.source = bindings.godot-api-src.outPath;
+        hs-bindgen-runtime.source = bindings.hs-bindgen-runtime-src;
+      };
+      settings = {
+        hs-bindgen-runtime.check = false;
+        # cabal2nix ignores a foreign-library's build-depends.
+        my-extension = { self, ... }: {
+          extraBuildDepends = [ self.gdextension-interface self.godot-api self.hs-bindgen-runtime ];
+        };
+      };
+    };
+  };
+```
+
+An extension also needs a C shim that starts the GHC runtime and a
+`.gdextension` manifest; copy both from `examples/extension`.
+
+## Acknowledgements
+
+The design was largely influenced by
+[DavidEichmann/godot-hs](https://github.com/DavidEichmann/godot-hs).
+
+## Licence
+
+MIT; see [LICENSE](LICENSE).

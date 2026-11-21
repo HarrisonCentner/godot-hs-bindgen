@@ -1,0 +1,24 @@
+# cabal
+dist
+dist-*
+cabal.project.local
+cabal.project.local~
+
+# nix
+result
+result-*
+
+# vim
+*~
+*.swp
+*.swo
+
+# direnv
+.direnv
+
+/.pre-commit-config.yaml
+
+# godot: the editor's cache, and extension libraries copied in by the
+# dev shell commands
+.godot/
+/examples/*/*/bin/*.so

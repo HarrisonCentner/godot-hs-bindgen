@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  nix:
+    name: Format, build, run in Godot
+    runs-on: ubuntu-latest
+    steps:
+      # GHC, hs-bindgen and Godot outgrow the runner's free disk ("No space
+      # left on device" kills the runner, so the job ends without a log).
+      # Delete preinstalled toolchains we never use first (~25 GB).
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+            /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost \
+            /usr/share/swift
+          sudo docker image prune --all --force > /dev/null
+          df -h /
+      - uses: actions/checkout@v7
+      - uses: DeterminateSystems/nix-installer-action@v23
+      # The hedgehog suite. The engine API needs a running engine, so the
+      # properties are built as an extension and run inside headless Godot.
+      # It includes the leak checks: operations repeated thousands of times
+      # must leave the engine's memory use unchanged, and the step also fails
+      # if Godot reports anything leaked when it exits.
+      # It is also part of `nix flake check` below; running it first, by
+      # name, makes a test failure show up as its own step.
+      - name: Hedgehog tests (in Godot)
+        run: nix build .#checks.x86_64-linux.engine-tests -L
+      # Runs the pre-commit formatting check, the hedgehog suite again (from
+      # cache) and the extension-example check, which builds the example
+      # extension against the generated packages and loads it in headless
+      # Godot.
+      - name: nix flake check
+        run: nix flake check -L
+      - name: Build the generated libraries
+        run: nix build .#gdextension-interface .#godot-api .#example-ext -L
+
+  all-classes:
+    name: Engine API for every class
+    runs-on: ubuntu-latest
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+            /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost \
+            /usr/share/swift
+          sudo docker image prune --all --force > /dev/null
+      - uses: actions/checkout@v7
+      - uses: DeterminateSystems/nix-installer-action@v23
+      # The other job builds method modules only for the classes the examples
+      # use. This compiles all of them, about a thousand modules, so that a
+      # generator change which breaks some other class is caught.
+      - name: Build godot-api with all classes
+        run: nix build .#godot-api-full -L

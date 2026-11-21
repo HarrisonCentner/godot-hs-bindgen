@@ -1,0 +1,11 @@
+[configuration]
+
+entry_symbol = "hs_tests_init"
+compatibility_minimum = "4.7"
+; The GHC runtime cannot be restarted after it shuts down, so Godot must not
+; try to hot-reload this library.
+reloadable = false
+
+[libraries]
+
+linux.x86_64 = "res://bin/libhs_tests.so"

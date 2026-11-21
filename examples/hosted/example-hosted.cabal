@@ -1,0 +1,29 @@
+cabal-version: 3.0
+name:          example-hosted
+version:       0.1.0.0
+synopsis:      Haskell hosts Godot: a program that runs Godot as a library
+license:       MIT
+category:      Game
+build-type:    Simple
+
+executable hosted-example
+  main-is:            Main.hs
+  hs-source-dirs:     app
+  build-depends:
+    , base
+    , godot-api
+    , godot-host
+
+  ghc-options:
+    -Wall -Wincomplete-record-updates -Wincomplete-uni-patterns
+    -Wmissing-deriving-strategies -threaded -O2 -rtsopts
+
+  default-extensions:
+    DerivingStrategies
+    ImportQualifiedPost
+    LambdaCase
+    NamedFieldPuns
+    RecordWildCards
+    StrictData
+
+  default-language:   GHC2021
