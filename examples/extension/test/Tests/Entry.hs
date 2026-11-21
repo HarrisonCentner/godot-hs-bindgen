@@ -1,3 +1,4 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -12,10 +13,14 @@ import Control.Concurrent (threadDelay)
 import Control.Exception (SomeException, try)
 import Control.Monad (forM_, replicateM, replicateM_, unless, void, when)
 import Data.Either (isLeft)
-import Data.Int (Int64)
+import Data.Function (on)
+import Data.IORef (modifyIORef, newIORef, readIORef)
+import Data.Int (Int32, Int64)
+import Data.List (nubBy)
 import Data.Maybe (isJust)
 import Data.Type.Equality (testEquality)
 import Data.Void (Void)
+import Data.Word (Word8)
 import Foreign hiding (void)
 import Godot.Api
 import Godot.Api.Class.BoxMesh qualified as BoxMesh
@@ -63,7 +68,7 @@ onLevel _ level = when (level == GDEXTENSION_INITIALIZATION_SCENE) $ do
   hSetEncoding stdout utf8
   hSetEncoding stderr utf8
   -- An exception must not escape into the engine, which called this.
-  outcome <- try (traverse checkSequential [variants, calls, lifetimes, memory])
+  outcome <- try (traverse checkSequential [variants, calls, collections, lifetimes, memory])
   -- The flake check looks for this line.
   putStrLn $ case outcome of
     Right results | and results -> "[hs-tests] PASSED"
@@ -220,6 +225,91 @@ calls =
           result === OK
       )
     ]
+
+--------------------------------------------------------------------------------
+-- Collections and callables
+
+collections :: Group
+collections =
+  Group
+    "collections and callables"
+    [
+      ( "a list round-trips through an Array"
+      , property $ do
+          xs <- forAll (Gen.list (Range.linear 0 50) (Gen.int64 Range.linearBounded))
+          back <- evalIO (arrayFromList xs >>= arrayToList)
+          back === Just xs
+      )
+    ,
+      ( "an Array read at the wrong element type gives Nothing"
+      , withTests 1 . property $ do
+          back <- evalIO $ do
+            mixed <- sequence [toVariant (1 :: Int64), toVariant True]
+            arrayFromVariants mixed >>= arrayToList @Int64
+          back === Nothing
+      )
+    ,
+      ( "entries round-trip through a Dictionary, in order"
+      , property $ do
+          entries <-
+            forAll . fmap (nubBy ((==) `on` fst)) $
+              Gen.list (Range.linear 0 30) ((,) <$> Gen.int64 Range.linearBounded <*> genVector3)
+          back <- evalIO (dictionaryFromList entries >>= dictionaryToList)
+          back === Just entries
+      )
+    ,
+      ( "a later Dictionary entry replaces an earlier one with the same key"
+      , withTests 1 . property $ do
+          back <- evalIO (dictionaryFromList [(1 :: Int64, 10 :: Int64), (2, 5), (1, 20)] >>= dictionaryToList)
+          back === Just [(1 :: Int64, 20 :: Int64), (2, 5)]
+      )
+    , ("a list round-trips through a PackedByteArray", packedRoundTrips @PackedByteArray (Gen.word8 Range.linearBounded))
+    , ("a list round-trips through a PackedInt32Array", packedRoundTrips @PackedInt32Array (Gen.int32 Range.linearBounded))
+    , ("a list round-trips through a PackedFloat32Array", packedRoundTrips @PackedFloat32Array genFloat)
+    , ("a list round-trips through a PackedVector3Array", packedRoundTrips @PackedVector3Array genVector3)
+    ,
+      ( "a list round-trips through a PackedColorArray"
+      , packedRoundTrips @PackedColorArray (Color <$> genFloat <*> genFloat <*> genFloat <*> genFloat)
+      )
+    ,
+      ( "strings round-trip through a PackedStringArray"
+      , property $ do
+          strings <- forAll (Gen.list (Range.linear 0 20) genText)
+          back <- evalIO (packedStringsFromList strings >>= packedStringsToList)
+          back === strings
+      )
+    ,
+      ( "a signal runs a connected Haskell callable with its arguments"
+      , property $ do
+          arguments <- forAll (Gen.list (Range.linear 0 5) (Gen.int64 Range.linearBounded))
+          (connected, received) <- evalIO $ do
+            calls <- newIORef []
+            callable <- newCallable_ $ \values -> do
+              numbers <- traverse (fromVariant @Int64) values
+              modifyIORef calls (numbers :)
+            node <- Node3D.construct
+            noArguments <- newDefault
+            name <- toGString "pulse"
+            Object.addUserSignal node name noArguments
+            signal <- toStringName "pulse"
+            connected <- Object.connect node signal callable 0
+            _ <- Object.emitSignal node signal =<< traverse toVariant arguments
+            freeObject node
+            (,) connected <$> readIORef calls
+          connected === OK
+          received === [map Just arguments]
+      )
+    ]
+
+packedRoundTrips ::
+  forall p.
+  (Packed p, Eq (Element p), Show (Element p)) =>
+  Gen (Element p) ->
+  Property
+packedRoundTrips gen = property $ do
+  xs <- forAll (Gen.list (Range.linear 0 200) gen)
+  back <- evalIO (packedFromList @p xs >>= packedToList)
+  back === xs
 
 --------------------------------------------------------------------------------
 -- Object lifetimes
@@ -405,6 +495,38 @@ memory =
       , -- The plain base class: resources such as meshes also hold memory
         -- in the rendering server, which is not returned until frames run.
         releases 5000 $ \_ -> void RefCounted.construct
+      )
+    ,
+      ( "arrays and dictionaries are released"
+      , releases 5000 $ \i -> do
+          array <- arrayFromList [fromIntegral i, 2, 3 :: Int64]
+          _ <- arrayToList @Int64 array
+          dictionary <- dictionaryFromList [(fromIntegral i :: Int64, Vector3 1 2 3)]
+          _ <- dictionaryToList @Int64 @Vector3 dictionary
+          pure ()
+      )
+    ,
+      ( "packed arrays are released"
+      , releases 5000 $ \i -> do
+          floats <- packedFromList @PackedFloat32Array (replicate 64 (fromIntegral i))
+          _ <- packedToList floats
+          strings <- packedStringsFromList ["one", show i]
+          _ <- packedStringsToList strings
+          pure ()
+      )
+    ,
+      ( "callables are released, connected or not"
+      , releases 5000 $ \_ -> do
+          unused <- newCallable_ (\_ -> pure ())
+          _ <- toVariant unused
+          node <- Node3D.construct
+          noArguments <- newDefault
+          name <- toGString "pulse"
+          Object.addUserSignal node name noArguments
+          signal <- toStringName "pulse"
+          connected <- newCallable_ (\_ -> pure ())
+          _ <- Object.connect node signal connected 0
+          freeObject node
       )
     ,
       ( "strings and their variants are released"

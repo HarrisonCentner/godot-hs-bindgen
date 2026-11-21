@@ -792,6 +792,23 @@ genClassModule env singletons c =
 
 --------------------------------------------------------------------------------
 
+-- | The container types Godot.Api.Containers calls @size@ and @resize@ on.
+containers :: [String]
+containers =
+  [ "Dictionary"
+  , "Array"
+  , "PackedByteArray"
+  , "PackedInt32Array"
+  , "PackedInt64Array"
+  , "PackedFloat32Array"
+  , "PackedFloat64Array"
+  , "PackedStringArray"
+  , "PackedVector2Array"
+  , "PackedVector3Array"
+  , "PackedColorArray"
+  , "PackedVector4Array"
+  ]
+
 main :: IO ()
 main = do
   apiPath : out : wanted <- getArgs
@@ -833,6 +850,12 @@ main = do
       let actual = [int "hash" m | c <- classes, str "name" c == cls, m <- list "methods" c, str "name" m == method]
       unless (actual == [expected :: Integer]) $
         fail (cls <> "." <> method <> " has hash " <> show actual <> " in this API, but Godot.Api.Runtime expects " <> show expected)
+  -- And these methods of builtin types (Godot.Api.Containers).
+  forM_ (("Dictionary", "keys", 4144163970) : [(t, m, h) | t <- containers, (m, h) <- [("size", 3173160232), ("resize", 848867239)], (t, m) /= ("Dictionary", "resize")]) $
+    \(builtin, method, expected) -> do
+      let actual = [int "hash" m | b <- list "builtin_classes" api, str "name" b == builtin, m <- list "methods" b, str "name" m == method]
+      unless (actual == [expected :: Integer]) $
+        fail (builtin <> "." <> method <> " has hash " <> show actual <> " in this API, but Godot.Api.Containers expects " <> show expected)
   forM_ wanted $ \w ->
     unless (w `Map.member` classParents env) $ fail ("unknown class " <> w)
   write "Godot/Api/Builtins.hs" (genBuiltins api sizes offsets variantTypes)

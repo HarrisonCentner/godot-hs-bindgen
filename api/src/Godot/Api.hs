@@ -35,6 +35,10 @@ module Godot.Api (
   -- * Strings
   module Godot.Api.Strings,
 
+  -- * Collections and callables
+  module Godot.Api.Containers,
+  module Godot.Api.Callable,
+
   -- * Variants
   Variant,
   newDefault,
@@ -47,7 +51,9 @@ module Godot.Api (
 ) where
 
 import Godot.Api.Builtins
+import Godot.Api.Callable
 import Godot.Api.Classes
+import Godot.Api.Containers
 import Godot.Api.Enums
 import Godot.Api.Runtime
 import Godot.Api.Strings

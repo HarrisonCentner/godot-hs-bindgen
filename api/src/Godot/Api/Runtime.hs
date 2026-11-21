@@ -20,6 +20,7 @@ module Godot.Api.Runtime (
   -- * Initialization
   initialize,
   functions,
+  library,
 
   -- * Calls
   Ptrcall,
@@ -77,6 +78,13 @@ module Godot.Api.Runtime (
   variantToOpaque,
   variantToObject,
   varcall,
+  copyVariant,
+  assignVariant,
+
+  -- * Builtin methods
+  BuiltinMethod,
+  lookupBuiltinMethod,
+  destroyGString,
 ) where
 
 import Control.Concurrent (threadDelay)
@@ -86,7 +94,7 @@ import Data.Array (Array, listArray, (!))
 import Data.Coerce (Coercible, coerce)
 import Data.Functor (void)
 import Data.IORef
-import Data.Int (Int64)
+import Data.Int (Int32, Int64)
 import Data.Kind (Type)
 import Data.Void (Void)
 import Data.Word (Word64, Word8)
@@ -114,6 +122,7 @@ data Api = Api
   , apiVariantDestroy :: FunPtr (Ptr () -> IO ())
   , apiInstanceFromId :: FunPtr (Word64 -> IO (Ptr ()))
   , apiInstanceId :: FunPtr (Ptr () -> IO Word64)
+  , apiLibrary :: GDExtensionClassLibraryPtr
   }
 
 apiRef :: IORef (Maybe Api)
@@ -131,7 +140,7 @@ This also asks Godot to call 'releasePending' on its main thread every
 frame, which is where reference-counted objects are given back.
 -}
 initialize :: GDExtensionInterfaceGetProcAddress -> GDExtensionClassLibraryPtr -> IO ()
-initialize getProcAddress library = do
+initialize getProcAddress library' = do
   fns <- loadFunctions getProcAddress
   let getProc =
         unwrapGDExtensionInterfaceGetProcAddress_Aux
@@ -152,6 +161,7 @@ initialize getProcAddress library = do
       , apiVariantDestroy = castFunPtr variantDestroy
       , apiInstanceFromId = castFunPtr instanceFromId
       , apiInstanceId = castFunPtr instanceId
+      , apiLibrary = library'
       }
   -- These callbacks live as long as the library, so they are never freed.
   onStartup <- toFunPtr (GDExtensionMainLoopStartupCallback_Aux (pure ()))
@@ -163,7 +173,7 @@ initialize getProcAddress library = do
       , gDExtensionMainLoopCallbacks_shutdown_func = GDExtensionMainLoopShutdownCallback onShutdown
       , gDExtensionMainLoopCallbacks_frame_func = GDExtensionMainLoopFrameCallback onFrame
       }
-    (registerMainLoopCallbacks fns library . PtrConst.unsafeFromPtr)
+    (registerMainLoopCallbacks fns library' . PtrConst.unsafeFromPtr)
 
 -- Read once, on first use after 'initialize'.
 api :: Api
@@ -174,6 +184,13 @@ api = unsafePerformIO $ readIORef apiRef >>= maybe (fail "Godot.Api: not initial
 functions :: Functions
 functions = let Api {apiFunctions} = api in apiFunctions
 {-# NOINLINE functions #-}
+
+{- | The library pointer Godot passed to the entry point: this extension's
+identity, for interface functions that ask for it.
+-}
+library :: GDExtensionClassLibraryPtr
+library = let Api {apiLibrary} = api in apiLibrary
+{-# NOINLINE library #-}
 
 foreign import ccall safe "dynamic" mkPtrcallSafe :: FunPtr Ptrcall -> Ptrcall
 
@@ -724,6 +741,53 @@ varcall bind object args =
             <> show gDExtensionCallError_expected
             <> ")"
       pure result
+
+{- | A variant we own, copied from one the engine owns at the given
+address.
+-}
+copyVariant :: Ptr () -> IO Variant
+copyVariant source =
+  newOpaqueWith $ \target ->
+    variantNewCopy
+      functions
+      (GDExtensionUninitializedVariantPtr (castPtr target))
+      (GDExtensionConstVariantPtr (PtrConst.unsafeFromPtr (castPtr source)))
+
+-- | Overwrite the variant at an address, which must already hold one.
+assignVariant :: Ptr () -> Variant -> IO ()
+assignVariant target value = do
+  variantDestroy functions (GDExtensionVariantPtr (castPtr target))
+  variantNewCopy
+    functions
+    (GDExtensionUninitializedVariantPtr (castPtr target))
+    (GDExtensionConstVariantPtr (PtrConst.unsafeFromPtr (castPtr (opaquePtr value))))
+  touch value
+
+--------------------------------------------------------------------------------
+-- Builtin methods
+
+{- | A method of a builtin type: self, the argument pointers, where to put
+the result, and the argument count.
+-}
+type BuiltinMethod = Ptr () -> Ptr () -> Ptr () -> Int32 -> IO ()
+
+foreign import ccall unsafe "dynamic"
+  mkBuiltinMethod :: FunPtr BuiltinMethod -> BuiltinMethod
+
+-- | Look up a method of the builtin type with the given variant type number.
+lookupBuiltinMethod :: CUInt -> String -> Int64 -> IO BuiltinMethod
+lookupBuiltinMethod vt name hash = do
+  GDExtensionPtrBuiltInMethod method <-
+    withStringName name $ \n ->
+      variantGetPtrBuiltinMethod functions (GDExtensionVariantType vt) n (GDExtensionInt hash)
+  when (method == nullFunPtr) $
+    fail ("Godot.Api: builtin method " <> name <> " of variant type " <> show vt <> " not found")
+  pure (mkBuiltinMethod (castFunPtr method))
+
+-- | Destroy the Godot @String@ at an address, leaving it uninitialized.
+destroyGString :: Ptr () -> IO ()
+destroyGString = unsafePerformIO (mkDestructor <$> lookupDestructor 4)
+{-# NOINLINE destroyGString #-}
 
 -- Silence unused-import warnings for types only used in signatures above.
 _unused :: (Ptr Void, Ptr CChar)

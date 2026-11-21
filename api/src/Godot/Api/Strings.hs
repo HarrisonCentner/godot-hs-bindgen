@@ -4,6 +4,8 @@ module Godot.Api.Strings (
   fromGString,
   toStringName,
   fromStringName,
+  peekGString,
+  pokeGString,
 ) where
 
 import Foreign
@@ -28,14 +30,30 @@ toGString s = GHC.withCStringLen utf8 s $ \(chars, len) ->
 
 fromGString :: GString -> IO String
 fromGString s = do
-  let ptr = GDExtensionConstStringPtr (PtrConst.unsafeFromPtr (castPtr (R.opaquePtr s)))
-  -- With no buffer, the result is the length in bytes.
-  GDExtensionInt len <- stringToUtf8Chars R.functions ptr nullPtr (GDExtensionInt 0)
-  r <- allocaBytes (fromIntegral len + 1) $ \buf -> do
-    _ <- stringToUtf8Chars R.functions ptr buf (GDExtensionInt len)
-    GHC.peekCStringLen utf8 (buf, fromIntegral len)
+  r <- peekGString (R.opaquePtr s)
   R.touch s
   pure r
+
+-- | Read the Godot @String@ stored at an address.
+peekGString :: Ptr () -> IO String
+peekGString p = do
+  let ptr = GDExtensionConstStringPtr (PtrConst.unsafeFromPtr (castPtr p))
+  -- With no buffer, the result is the length in bytes.
+  GDExtensionInt len <- stringToUtf8Chars R.functions ptr nullPtr (GDExtensionInt 0)
+  allocaBytes (fromIntegral len + 1) $ \buf -> do
+    _ <- stringToUtf8Chars R.functions ptr buf (GDExtensionInt len)
+    GHC.peekCStringLen utf8 (buf, fromIntegral len)
+
+-- | Replace the Godot @String@ stored at an address.
+pokeGString :: Ptr () -> String -> IO ()
+pokeGString p s = do
+  R.destroyGString p
+  GHC.withCStringLen utf8 s $ \(chars, len) ->
+    stringNewWithUtf8CharsAndLen
+      R.functions
+      (GDExtensionUninitializedStringPtr (castPtr p))
+      (PtrConst.unsafeFromPtr chars)
+      (GDExtensionInt (fromIntegral len))
 
 {- | A Godot @StringName@: an interned string, used for names of methods,
 properties, signals and nodes. Creating one looks it up in the engine's

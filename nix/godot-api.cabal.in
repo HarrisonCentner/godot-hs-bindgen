@@ -18,7 +18,9 @@ library
   exposed-modules:
     Godot.Api
     Godot.Api.Builtins
+    Godot.Api.Callable
     Godot.Api.Classes
+    Godot.Api.Containers
     Godot.Api.Enums
     Godot.Api.Runtime
     Godot.Api.Strings
