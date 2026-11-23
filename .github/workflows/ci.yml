@@ -16,6 +16,9 @@ jobs:
   nix:
     name: Format, build, run in Godot
     runs-on: ubuntu-latest
+    # About 17 minutes when healthy. Without a limit a build that hangs
+    # holds the runner for GitHub's default of six hours.
+    timeout-minutes: 60
     steps:
       # GHC, hs-bindgen and Godot outgrow the runner's free disk ("No space
       # left on device" kills the runner, so the job ends without a log).
@@ -51,6 +54,8 @@ jobs:
   all-classes:
     name: Engine API for every class
     runs-on: ubuntu-latest
+    # About 27 minutes when healthy.
+    timeout-minutes: 60
     steps:
       - name: Free disk space
         run: |

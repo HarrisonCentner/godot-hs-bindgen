@@ -44,7 +44,10 @@
         import ./nix/godot-bindings.nix
           {
             inherit pkgs classes;
-            inherit (inputs.hs-bindgen.packages.${pkgs.stdenv.hostPlatform.system}) hs-bindgen-cli;
+            hs-bindgen-cli = import ./nix/hs-bindgen-cli.nix {
+              inherit (inputs) hs-bindgen;
+              inherit (pkgs.stdenv.hostPlatform) system;
+            };
           } // {
           hs-bindgen-runtime-src = inputs.hs-bindgen + /hs-bindgen-runtime;
         };

@@ -18,7 +18,7 @@
       packages = config.exampleScripts ++ (with pkgs; [
         nixd
         godot
-        inputs.hs-bindgen.packages.${system}.hs-bindgen-cli
+        (import ../../hs-bindgen-cli.nix { inherit (inputs) hs-bindgen; inherit system; })
       ]);
     };
 
