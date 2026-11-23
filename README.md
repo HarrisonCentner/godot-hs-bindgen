@@ -1,8 +1,8 @@
 # godot-hs-bindgen
 
-Haskell bindings for Godot 4, generated with
-[hs-bindgen](https://github.com/well-typed/hs-bindgen) and built with Nix.
-Godot can load Haskell as an extension, or Haskell can run Godot as a library.
+Haskell bindings for Godot 4 via
+[hs-bindgen](https://github.com/well-typed/hs-bindgen).
+Either load Haskell as a Godot extension or let Haskell run Godot as a library.
 
 ```haskell
 import Godot.Api
@@ -18,8 +18,6 @@ parent <- Node3D.getParentNode3d node               -- Maybe Node3D
 
 ## Packages
 
-All three are generated from the Godot in nixpkgs, so they always match it.
-
 | Package | What it is |
 |---|---|
 | `gdextension-interface` | Godot's C interface, by hs-bindgen, plus a typed record of its functions |
@@ -28,17 +26,11 @@ All three are generated from the Godot in nixpkgs, so they always match it.
 
 ## What the engine API gives you
 
-- A newtype per class; methods accept any subclass.
-- `Maybe` for results that can be null.
+- A `newtype` per class; methods accept any subclass.
 - Value types (`Vector3`, `Color`, `Transform3D`, ...) as strict records.
-- Strings, arrays and other engine-owned values, freed when garbage collected.
-- Enums as newtypes with a pattern synonym per value.
 - Variants with a closed witness of their type: `toVariant`, a checked
   `fromVariant`, and `viewVariant` to pattern match on.
-- Handles that are safe to keep: resources are reference-counted, and using a
-  freed node throws `ObjectFreed`.
-- Every method as a safe foreign call and as a faster `_unsafe` one, for calls
-  that cannot re-enter Haskell.
+- Every method as `safe` and `_unsafe` foreign call 
 
 ## Examples
 
@@ -70,22 +62,11 @@ main = withGodot ["my-program", "--path", "project"] $ \godot ->
    in loop
 ```
 
-For live coding, `Godot.Host.Live` runs the engine on its own thread from a
-GHCi session and lets the scene and the per-frame code be replaced after a
-`:reload`, with the window staying open.
-
-Hosting needs Godot built as a shared library, which nixpkgs does not package.
-Entering the `hosted` shell builds it once: a full engine compile, 15 to 35
-minutes on a 12-core machine.
-
-Only x86_64-linux has been built and run.
-
 ## Using it from another flake
 
 `lib.mkBindings` builds the packages against your own nixpkgs. Pass `classes`
-to generate methods for those classes and their ancestors only; the default,
-every class, is about a thousand modules. With
-[haskell-flake](https://github.com/srid/haskell-flake):
+to generate methods for those classes and their ancestors only.
+With [haskell-flake](https://github.com/srid/haskell-flake):
 
 ```nix
 perSystem = { pkgs, ... }:
@@ -116,11 +97,11 @@ perSystem = { pkgs, ... }:
 An extension also needs a C shim that starts the GHC runtime and a
 `.gdextension` manifest; copy both from `examples/extension`.
 
-## Acknowledgements
+## Acknowledgments
 
 The design was largely influenced by
 [DavidEichmann/godot-hs](https://github.com/DavidEichmann/godot-hs).
 
-## Licence
+## License
 
 MIT; see [LICENSE](LICENSE).
